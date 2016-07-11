@@ -190,6 +190,73 @@ impl NvList {
             None => Err(NvErr::ErrorNotSet(error))
         }
     }
+
+    /// Generic add a value to the NvList
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag, NvListAdd};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// let the_answer: u64 = 42;
+    /// let not_the_answer: Option<u64> = None;
+    ///
+    /// list.add("the answer", the_answer);
+    /// list.add("not the answer", not_the_answer);
+    /// ```
+    pub fn add<T: NvListAdd>(&mut self, name: &str, value: T) -> () {
+        value.add(self, name);
+    }
+
+    /// Add a number to the `NvList`
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// list.add_number("the answer", 42u64);
+    /// ```
+    pub fn add_number(&mut self, name: &str, value: u64) -> () {
+        if let Some(list) = self.list {
+            unsafe { nvlist_add_number(list, name.as_bytes().as_ptr(), value); }
+        }
+    }
+
+    /// Add a null value to the `NvList`
+    ///
+    /// ```ignore
+    /// list.add_null("Hello, World!");
+    /// ```
+    pub fn add_null(&mut self, name: &str) -> () {
+        if let Some(list) = self.list {
+            unsafe { nvlist_add_null(list, name.as_bytes().as_ptr()); }
+        }
+    }
+}
+
+/// Trait implemented for types that are allowed to be
+/// added to an `NvList`
+pub trait NvListAdd {
+    /// Add the value to the `NvList`
+    fn add(&self, nvlist: &mut NvList, name: &str) -> ();
+}
+
+impl NvListAdd for u64 {
+    /// Add a `u64` to the `NvList`
+    fn add(&self, list: &mut NvList, name: &str) -> () {
+        list.add_number(name, *self);
+    }
+}
+
+impl<T> NvListAdd for Option<T> where T: NvListAdd {
+    /// Add an Option value to the `NvList`.
+    fn add(&self, list: &mut NvList, name: &str) -> () {
+        match self {
+            &Some(ref val) => val.add(list, name),
+            &None => list.add_null(name)
+        }
+    }
 }
 
 impl Default for NvList {
@@ -214,4 +281,6 @@ extern {
     fn nvlist_flags(list: *const nvlist) -> i32;
     fn nvlist_error(list: *const nvlist) -> i32;
     fn nvlist_set_error(list: *mut nvlist, error: i32) -> ();
+    fn nvlist_add_number(list: *mut nvlist, name: *const u8, value: u64) -> ();
+    fn nvlist_add_null(list: *mut nvlist, name: *const u8) -> ();
 }
