@@ -151,6 +151,8 @@ impl NvList {
     ///
     /// list.add("the answer", the_answer);
     /// list.add("not the answer", not_the_answer);
+    /// let copy = list.clone();
+    /// list.add("how very meta of you", copy);
     /// ```
     pub fn add<T: NvListAdd>(&mut self, name: &str, value: T) -> () {
         value.nv_add(self, name);
