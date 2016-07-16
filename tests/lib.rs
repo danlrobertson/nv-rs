@@ -10,6 +10,7 @@ mod tests {
 
     #[test]
     fn test_create_nvlist() {
-        let _ = NvList::new(NvFlag::All);
+        let x = NvList::new(NvFlag::All);
+        let _ = x.clone();
     }
 }
