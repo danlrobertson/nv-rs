@@ -139,7 +139,7 @@ impl NvList {
         }
     }
 
-    /// Generic add a value to the NvList
+    /// Genericially add a single value to the NvList
     ///
     /// ```
     /// use nv::{NvList, NvFlag, NvListAdd};
@@ -148,6 +148,7 @@ impl NvList {
     ///
     /// let the_answer: u64 = 42;
     /// let not_the_answer: Option<u64> = None;
+    /// let slice = [42u64, 100];
     ///
     /// list.add("the answer", the_answer);
     /// list.add("not the answer", not_the_answer);
@@ -227,6 +228,87 @@ impl NvList {
         }
     }
 
+    /// Add slice of `bool` values
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// let slice = [true, false, true, false];
+    ///
+    /// list.add_bool_slice("the answer", &slice);
+    /// ```
+    pub fn add_bool_slice(&mut self, name: &str, value: &[bool]) -> () {
+        if let Some(list) = self.list {
+            unsafe {
+                nvlist_add_bool_array(list, name.as_bytes().as_ptr(),
+                                      value.as_ptr(), value.len());
+            }
+        }
+    }
+
+    /// Add slice of `u64`s
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// let slice = [42, 100];
+    ///
+    /// list.add_number_slice("the answer", &slice);
+    /// ```
+    pub fn add_number_slice(&mut self, name: &str, value: &[u64]) -> () {
+        if let Some(list) = self.list {
+            unsafe {
+                nvlist_add_number_array(list, name.as_bytes().as_ptr(),
+                                        value.as_ptr(), value.len());
+            }
+        }
+    }
+
+    /// Add a slice of strings
+    pub fn add_string_slice(&mut self, name: &str, value: &[&str]) -> () {
+        if let Some(list) = self.list {
+            unsafe {
+                let tmp: Vec<*const u8> = value.iter().map(|item| {
+                    item.as_bytes().as_ptr()
+                }).collect();
+                nvlist_add_string_array(list, name.as_bytes().as_ptr(),
+                                        tmp.as_slice().as_ptr(),
+                                        value.len());
+            }
+        }
+    }
+
+    /// Add a slice of `NvList`s
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// let slice = [NvList::default(), NvList::new(NvFlag::All).unwrap(),
+    ///              NvList::new(NvFlag::None).unwrap()];
+    ///
+    /// list.add_nvlist_slice("nvlists", &slice);
+    /// ```
+    pub fn add_nvlist_slice(&mut self, name: &str, value: &[NvList]) -> () {
+        if let Some(list) = self.list {
+            unsafe {
+                let tmp: Vec<*const nvlist> = value.iter().filter(|item| match item.list {
+                    Some(item) if !item.is_null() => true,
+                    _ => false
+                }).map(|item| {
+                    item.list.unwrap() as *const nvlist
+                }).collect();
+                nvlist_add_nvlist_array(list, name.as_bytes().as_ptr(),
+                                        tmp.as_slice().as_ptr(), tmp.len());
+            }
+        }
+    }
+
     /// Write `NvList` to a file descriptor
     ///
     /// ```
@@ -293,4 +375,12 @@ extern {
     fn nvlist_add_nvlist(list: *mut nvlist, name: *const u8, value: *const nvlist) -> ();
     fn nvlist_add_binary(list: *mut nvlist, name: *const u8,
                          value: *mut i8, size: u32) -> ();
+    fn nvlist_add_bool_array(list: *mut nvlist, name: *const u8,
+                             value: *const bool, size: usize) -> ();
+    fn nvlist_add_number_array(list: *mut nvlist, name: *const u8,
+                               value: *const u64, size: usize) -> ();
+    fn nvlist_add_string_array(list: *mut nvlist, name: *const u8,
+                               value: *const *const u8, size: usize) -> ();
+    fn nvlist_add_nvlist_array(list: *mut nvlist, name: *const u8,
+                               value: *const *const nvlist, size: usize) -> ();
 }
