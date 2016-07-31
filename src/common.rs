@@ -1,6 +1,6 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
 /// Error type for the `nv` crate
@@ -9,7 +9,7 @@ pub enum NvErr {
     /// Error in construction of nvlist
     ConstructionErr,
     /// Error not set
-    ErrorNotSet(i32)
+    ErrorNotSet(i32),
 }
 
 /// Result type for the `nv` crate
@@ -48,5 +48,5 @@ pub enum NvType {
     /// The value is an array of other `nvlist`'s
     NvListArray = 11,
     /// The value is an array of file descriptors
-    DescriptorArray = 12
+    DescriptorArray = 12,
 }

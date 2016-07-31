@@ -1,6 +1,6 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
 use std::str;
@@ -20,7 +20,7 @@ pub enum NvFlag {
     /// There may be duplicate names in the `nvlist`
     NoUnique = 2,
     /// Both of the previous flags
-    All = 3
+    All = 3,
 }
 
 impl NvFlag {
@@ -31,7 +31,7 @@ impl NvFlag {
             1 => Ok(NvFlag::IgnoreCase),
             2 => Ok(NvFlag::NoUnique),
             3 => Ok(NvFlag::All),
-            _ => Err(NvErr::ConstructionErr)
+            _ => Err(NvErr::ConstructionErr),
         }
     }
 }
@@ -49,7 +49,7 @@ struct nvlist;
 
 /// A list of name/value pairs
 pub struct NvList {
-    list: Option<*mut nvlist>
+    list: Option<*mut nvlist>,
 }
 
 impl NvList {
@@ -97,10 +97,8 @@ impl NvList {
     pub fn flags(&self) -> NvFlag {
         match self.list {
             // We know `from_i32` will succeed, so we can just unwrap it
-            Some(list) => {
-                NvFlag::from_i32(unsafe { nvlist_flags(list as *const nvlist) }).unwrap()
-            }
-            None => NvFlag::None
+            Some(list) => NvFlag::from_i32(unsafe { nvlist_flags(list as *const nvlist) }).unwrap(),
+            None => NvFlag::None,
         }
     }
 
@@ -117,7 +115,7 @@ impl NvList {
     pub fn error(&self) -> i32 {
         match self.list {
             Some(list) => unsafe { nvlist_error(list as *const nvlist) },
-            None => 0xc
+            None => 0xc,
         }
     }
 
@@ -136,7 +134,7 @@ impl NvList {
     pub fn set_error(&self, error: i32) -> NvResult<()> {
         match self.list {
             Some(list) => Ok(unsafe { nvlist_set_error(list, error) }),
-            None => Err(NvErr::ErrorNotSet(error))
+            None => Err(NvErr::ErrorNotSet(error)),
         }
     }
 
@@ -166,14 +164,18 @@ impl NvList {
     /// ```
     pub fn add_null(&mut self, name: &str) -> () {
         if let Some(list) = self.list {
-            unsafe { nvlist_add_null(list, name.as_bytes().as_ptr()); }
+            unsafe {
+                nvlist_add_null(list, name.as_bytes().as_ptr());
+            }
         }
     }
 
     /// Add a `bool` to the list
     pub fn add_bool(&mut self, name: &str, value: bool) -> () {
         if let Some(list) = self.list {
-            unsafe { nvlist_add_bool(list, name.as_bytes().as_ptr(), value); }
+            unsafe {
+                nvlist_add_bool(list, name.as_bytes().as_ptr(), value);
+            }
         }
     }
 
@@ -188,17 +190,16 @@ impl NvList {
     /// ```
     pub fn add_number(&mut self, name: &str, value: u64) -> () {
         if let Some(list) = self.list {
-            unsafe { nvlist_add_number(list, name.as_bytes().as_ptr(), value); }
+            unsafe {
+                nvlist_add_number(list, name.as_bytes().as_ptr(), value);
+            }
         }
     }
 
     /// Add string to the list
     pub fn add_string(&mut self, name: &str, value: &str) -> () {
         if let Some(list) = self.list {
-            unsafe {
-                nvlist_add_string(list, name.as_bytes().as_ptr(),
-                                  value.as_bytes().as_ptr())
-            }
+            unsafe { nvlist_add_string(list, name.as_bytes().as_ptr(), value.as_bytes().as_ptr()) }
         }
     }
 
@@ -218,16 +219,15 @@ impl NvList {
     pub fn add_nvlist(&mut self, name: &str, value: &NvList) -> () {
         match (self.list, value.list) {
             // Both are valid
-            (Some(this), Some(other)) if !other.is_null() => {
-                unsafe { nvlist_add_nvlist(this, name.as_bytes().as_ptr(), other) }
-            }
+            (Some(this), Some(other)) if !other.is_null() => unsafe {
+                nvlist_add_nvlist(this, name.as_bytes().as_ptr(), other)
+            },
             // This is valid, but the other is not
-            (Some(this), _) => {
-                unsafe {
-                    nvlist_add_nvlist(this, name.as_bytes().as_ptr(),
-                                      nvlist_create(self.flags() as i32))
-                }
-            }
+            (Some(this), _) => unsafe {
+                nvlist_add_nvlist(this,
+                                  name.as_bytes().as_ptr(),
+                                  nvlist_create(self.flags() as i32))
+            },
             // Something bad happened... nop
             _ => {}
         }
@@ -254,8 +254,7 @@ impl NvList {
     pub fn add_bool_slice(&mut self, name: &str, value: &[bool]) -> () {
         if let Some(list) = self.list {
             unsafe {
-                nvlist_add_bool_array(list, name.as_bytes().as_ptr(),
-                                      value.as_ptr(), value.len());
+                nvlist_add_bool_array(list, name.as_bytes().as_ptr(), value.as_ptr(), value.len());
             }
         }
     }
@@ -274,8 +273,10 @@ impl NvList {
     pub fn add_number_slice(&mut self, name: &str, value: &[u64]) -> () {
         if let Some(list) = self.list {
             unsafe {
-                nvlist_add_number_array(list, name.as_bytes().as_ptr(),
-                                        value.as_ptr(), value.len());
+                nvlist_add_number_array(list,
+                                        name.as_bytes().as_ptr(),
+                                        value.as_ptr(),
+                                        value.len());
             }
         }
     }
@@ -284,10 +285,11 @@ impl NvList {
     pub fn add_string_slice(&mut self, name: &str, value: &[&str]) -> () {
         if let Some(list) = self.list {
             unsafe {
-                let tmp: Vec<*const u8> = value.iter().map(|item| {
-                    item.as_bytes().as_ptr()
-                }).collect();
-                nvlist_add_string_array(list, name.as_bytes().as_ptr(),
+                let tmp: Vec<*const u8> = value.iter()
+                    .map(|item| item.as_bytes().as_ptr())
+                    .collect();
+                nvlist_add_string_array(list,
+                                        name.as_bytes().as_ptr(),
                                         tmp.as_slice().as_ptr(),
                                         value.len());
             }
@@ -309,14 +311,17 @@ impl NvList {
     pub fn add_nvlist_slice(&mut self, name: &str, value: &[NvList]) -> () {
         if let Some(list) = self.list {
             unsafe {
-                let tmp: Vec<*const nvlist> = value.iter().filter(|item| match item.list {
-                    Some(item) if !item.is_null() => true,
-                    _ => false
-                }).map(|item| {
-                    item.list.unwrap() as *const nvlist
-                }).collect();
-                nvlist_add_nvlist_array(list, name.as_bytes().as_ptr(),
-                                        tmp.as_slice().as_ptr(), tmp.len());
+                let tmp: Vec<*const nvlist> = value.iter()
+                    .filter(|item| match item.list {
+                        Some(item) if !item.is_null() => true,
+                        _ => false,
+                    })
+                    .map(|item| item.list.unwrap() as *const nvlist)
+                    .collect();
+                nvlist_add_nvlist_array(list,
+                                        name.as_bytes().as_ptr(),
+                                        tmp.as_slice().as_ptr(),
+                                        tmp.len());
             }
         }
     }
@@ -326,10 +331,8 @@ impl NvList {
     /// otherwise
     pub fn exists(&self, name: &str) -> bool {
         match self.list {
-            Some(list) => {
-                unsafe { nvlist_exists(list, name.as_bytes().as_ptr()) }
-            },
-            _ => false
+            Some(list) => unsafe { nvlist_exists(list, name.as_bytes().as_ptr()) },
+            _ => false,
         }
     }
 
@@ -338,13 +341,8 @@ impl NvList {
     /// `NvList` and `false` otherwise
     pub fn exists_type(&self, name: &str, ty: NvType) -> bool {
         match self.list {
-            Some(list) => {
-                unsafe {
-                    nvlist_exists_type(list, name.as_bytes().as_ptr(),
-                                       ty as i32)
-                }
-            },
-            None => false
+            Some(list) => unsafe { nvlist_exists_type(list, name.as_bytes().as_ptr(), ty as i32) },
+            None => false,
         }
     }
 
@@ -364,17 +362,15 @@ impl NvList {
     /// ```
     pub fn get_bool(&self, name: &str) -> Option<bool> {
         match self.list {
-            Some(list) => {
-                unsafe {
-                    let char_arr = name.as_bytes().as_ptr();
-                    if nvlist_exists_bool(list, char_arr) {
-                        Some(nvlist_get_bool(list, name.as_bytes().as_ptr()))
-                    } else {
-                        None
-                    }
+            Some(list) => unsafe {
+                let char_arr = name.as_bytes().as_ptr();
+                if nvlist_exists_bool(list, char_arr) {
+                    Some(nvlist_get_bool(list, name.as_bytes().as_ptr()))
+                } else {
+                    None
                 }
             },
-            _ => None
+            _ => None,
         }
     }
 
@@ -382,17 +378,15 @@ impl NvList {
     /// the given name
     pub fn get_number(&self, name: &str) -> Option<u64> {
         match self.list {
-            Some(list) => {
-                unsafe {
-                    let char_arr = name.as_bytes().as_ptr();
-                    if nvlist_exists_number(list, char_arr) {
-                        Some(nvlist_get_number(list, name.as_bytes().as_ptr()))
-                    } else {
-                        None
-                    }
+            Some(list) => unsafe {
+                let char_arr = name.as_bytes().as_ptr();
+                if nvlist_exists_number(list, char_arr) {
+                    Some(nvlist_get_number(list, name.as_bytes().as_ptr()))
+                } else {
+                    None
                 }
             },
-            _ => None
+            _ => None,
         }
     }
 
@@ -411,23 +405,21 @@ impl NvList {
     /// ```
     pub fn get_string(&self, name: &str) -> Option<String> {
         match self.list {
-            Some(list) => {
-                unsafe {
-                    let char_arr = name.as_bytes().as_ptr();
-                    if nvlist_exists_string(list, char_arr) {
-                        let ret = nvlist_get_string(list, name.as_bytes().as_ptr());
-                        if ret.is_null() {
-                            None
-                        } else {
-                            let len = strlen(ret);
-                            Some(String::from_raw_parts(ret as *mut u8, len, len))
-                        }
-                    } else {
+            Some(list) => unsafe {
+                let char_arr = name.as_bytes().as_ptr();
+                if nvlist_exists_string(list, char_arr) {
+                    let ret = nvlist_get_string(list, name.as_bytes().as_ptr());
+                    if ret.is_null() {
                         None
+                    } else {
+                        let len = strlen(ret);
+                        Some(String::from_raw_parts(ret as *mut u8, len, len))
                     }
+                } else {
+                    None
                 }
             },
-            _ => None
+            _ => None,
         }
     }
 
@@ -455,20 +447,16 @@ impl NvList {
     /// ```
     pub fn get_nvlist(&self, name: &str) -> Option<NvList> {
         match self.list {
-            Some(list) => {
-                unsafe {
-                    let char_arr = name.as_bytes().as_ptr();
-                    if nvlist_exists_nvlist(list, char_arr) {
-                        let res = nvlist_get_nvlist(list, name.as_bytes().as_ptr());
-                        Some(NvList {
-                            list: Some(nvlist_clone(res))
-                        })
-                    } else {
-                        None
-                    }
+            Some(list) => unsafe {
+                let char_arr = name.as_bytes().as_ptr();
+                if nvlist_exists_nvlist(list, char_arr) {
+                    let res = nvlist_get_nvlist(list, name.as_bytes().as_ptr());
+                    Some(NvList { list: Some(nvlist_clone(res)) })
+                } else {
+                    None
                 }
             },
-            _ => None
+            _ => None,
         }
     }
 
@@ -494,7 +482,7 @@ impl NvList {
     pub fn len(&self) -> i32 {
         match self.list {
             Some(list) => unsafe { nvlist_size(list) },
-            None => 0
+            None => 0,
         }
     }
 }
@@ -514,13 +502,15 @@ impl Default for NvList {
 impl Drop for NvList {
     fn drop(&mut self) {
         if let Some(raw_list) = self.list {
-            unsafe { nvlist_destroy(raw_list); }
+            unsafe {
+                nvlist_destroy(raw_list);
+            }
         }
     }
 }
 
 #[link(name="nv")]
-extern {
+extern "C" {
     fn nvlist_create(flags: i32) -> *mut nvlist;
     fn nvlist_destroy(list: *mut nvlist) -> ();
     fn nvlist_empty(list: *const nvlist) -> bool;
@@ -536,16 +526,27 @@ extern {
     fn nvlist_add_number(list: *mut nvlist, name: *const u8, value: u64) -> ();
     fn nvlist_add_string(list: *mut nvlist, name: *const u8, value: *const u8) -> ();
     fn nvlist_add_nvlist(list: *mut nvlist, name: *const u8, value: *const nvlist) -> ();
-    fn nvlist_add_binary(list: *mut nvlist, name: *const u8,
-                         value: *mut i8, size: u32) -> ();
-    fn nvlist_add_bool_array(list: *mut nvlist, name: *const u8,
-                             value: *const bool, size: usize) -> ();
-    fn nvlist_add_number_array(list: *mut nvlist, name: *const u8,
-                               value: *const u64, size: usize) -> ();
-    fn nvlist_add_string_array(list: *mut nvlist, name: *const u8,
-                               value: *const *const u8, size: usize) -> ();
-    fn nvlist_add_nvlist_array(list: *mut nvlist, name: *const u8,
-                               value: *const *const nvlist, size: usize) -> ();
+    fn nvlist_add_binary(list: *mut nvlist, name: *const u8, value: *mut i8, size: u32) -> ();
+    fn nvlist_add_bool_array(list: *mut nvlist,
+                             name: *const u8,
+                             value: *const bool,
+                             size: usize)
+                             -> ();
+    fn nvlist_add_number_array(list: *mut nvlist,
+                               name: *const u8,
+                               value: *const u64,
+                               size: usize)
+                               -> ();
+    fn nvlist_add_string_array(list: *mut nvlist,
+                               name: *const u8,
+                               value: *const *const u8,
+                               size: usize)
+                               -> ();
+    fn nvlist_add_nvlist_array(list: *mut nvlist,
+                               name: *const u8,
+                               value: *const *const nvlist,
+                               size: usize)
+                               -> ();
     fn nvlist_exists(list: *mut nvlist, name: *const u8) -> bool;
     fn nvlist_exists_type(list: *const nvlist, name: *const u8, ty: i32) -> bool;
     fn nvlist_exists_bool(list: *const nvlist, name: *const u8) -> bool;

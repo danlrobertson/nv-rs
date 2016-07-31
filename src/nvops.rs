@@ -1,6 +1,6 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use nvlist::NvList;
 
@@ -48,7 +48,8 @@ pub trait NvListOps {
     fn nv_add(&self, nvlist: &mut NvList, name: &str) -> ();
 
     /// Retrieve value from an `NvList`
-    fn nv_get(&self, nvlist: &mut NvList, name: &str) -> Option<Self::RetType> where Self::RetType: Sized;
+    fn nv_get(&self, nvlist: &mut NvList, name: &str) -> Option<Self::RetType>
+        where Self::RetType: Sized;
 }
 
 impl_nv_list_ops!{bool, add_bool, get_bool}
@@ -59,13 +60,15 @@ impl_nv_list_ops!{str, add_string, get_string, String, true}
 
 impl_nv_list_ops!{NvList, add_nvlist, get_nvlist, NvList, true}
 
-impl<T> NvListOps for Option<T> where T: NvListOps {
+impl<T> NvListOps for Option<T>
+    where T: NvListOps
+{
     type RetType = Option<T::RetType>;
     /// Add an `Option` value to the `NvList`.
     fn nv_add(&self, list: &mut NvList, name: &str) -> () {
         match self {
             &Some(ref val) => val.nv_add(list, name),
-            &None => list.add_null(name)
+            &None => list.add_null(name),
         }
     }
 
@@ -73,8 +76,7 @@ impl<T> NvListOps for Option<T> where T: NvListOps {
     fn nv_get(&self, list: &mut NvList, name: &str) -> Option<Option<T::RetType>> {
         match self {
             &Some(ref val) => Some(val.nv_get(list, name)),
-            &None => None
+            &None => None,
         }
     }
 }
-
