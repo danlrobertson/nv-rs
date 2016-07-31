@@ -14,8 +14,8 @@
 
 mod common;
 mod nvlist;
-mod nvadd;
+mod nvops;
 
 pub use common::{NvErr, NvResult, NvType, NV_NAME_MAX};
 pub use nvlist::{NvFlag, NvList};
-pub use nvadd::NvListAdd;
+pub use nvops::NvListOps;

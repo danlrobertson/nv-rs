@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 
+use std::str;
 use std::os::unix::io::AsRawFd;
-use common::{NvErr, NvResult};
-use nvadd::NvListAdd;
+use common::{NvErr, NvResult, NvType};
+use nvops::NvListOps;
 
 /// Enumeration of options available to be passed to
 /// the creation of an `nvlist`
@@ -142,20 +143,19 @@ impl NvList {
     /// Genericially add a single value to the NvList
     ///
     /// ```
-    /// use nv::{NvList, NvFlag, NvListAdd};
+    /// use nv::{NvList, NvFlag, NvListOps};
     ///
     /// let mut list = NvList::new(NvFlag::All).unwrap();
     ///
     /// let the_answer: u64 = 42;
     /// let not_the_answer: Option<u64> = None;
-    /// let slice = [42u64, 100];
     ///
     /// list.add("the answer", the_answer);
     /// list.add("not the answer", not_the_answer);
     /// let copy = list.clone();
     /// list.add("how very meta of you", copy);
     /// ```
-    pub fn add<T: NvListAdd>(&mut self, name: &str, value: T) -> () {
+    pub fn add<T: NvListOps>(&mut self, name: &str, value: T) -> () {
         value.nv_add(self, name);
     }
 
@@ -203,6 +203,18 @@ impl NvList {
     }
 
     /// Add `NvList` to the list
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// let other_list = NvList::default();
+    ///
+    /// list.add_nvlist("other list", &other_list);
+    ///
+    /// assert_eq!(other_list.get_bool("something"), None);
+    /// ```
     pub fn add_nvlist(&mut self, name: &str, value: &NvList) -> () {
         match (self.list, value.list) {
             // Both are valid
@@ -309,6 +321,157 @@ impl NvList {
         }
     }
 
+    /// Returns `true` if a name/value pair
+    /// exists in the `NvList` and `false`
+    /// otherwise
+    pub fn exists(&self, name: &str) -> bool {
+        match self.list {
+            Some(list) => {
+                unsafe { nvlist_exists(list, name.as_bytes().as_ptr()) }
+            },
+            _ => false
+        }
+    }
+
+    /// Returns `true` if a name/value pair
+    /// of the specified type exists in the
+    /// `NvList` and `false` otherwise
+    pub fn exists_type(&self, name: &str, ty: NvType) -> bool {
+        match self.list {
+            Some(list) => {
+                unsafe {
+                    nvlist_exists_type(list, name.as_bytes().as_ptr(),
+                                       ty as i32)
+                }
+            },
+            None => false
+        }
+    }
+
+    /// Get the first matching `bool` value paired with
+    /// the given name
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// list.add_bool("is rust awesome?", true);
+    /// list.add_bool("is rust awesome?", false);
+    ///
+    /// assert!(list.get_bool("is rust awesome?").unwrap(), true);
+    /// ```
+    pub fn get_bool(&self, name: &str) -> Option<bool> {
+        match self.list {
+            Some(list) => {
+                unsafe {
+                    let char_arr = name.as_bytes().as_ptr();
+                    if nvlist_exists_bool(list, char_arr) {
+                        Some(nvlist_get_bool(list, name.as_bytes().as_ptr()))
+                    } else {
+                        None
+                    }
+                }
+            },
+            _ => None
+        }
+    }
+
+    /// Get the first matching `u64` value paired with
+    /// the given name
+    pub fn get_number(&self, name: &str) -> Option<u64> {
+        match self.list {
+            Some(list) => {
+                unsafe {
+                    let char_arr = name.as_bytes().as_ptr();
+                    if nvlist_exists_number(list, char_arr) {
+                        Some(nvlist_get_number(list, name.as_bytes().as_ptr()))
+                    } else {
+                        None
+                    }
+                }
+            },
+            _ => None
+        }
+    }
+
+    /// Get the first matching `u64` value paired with
+    /// the given name
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::None).unwrap();
+    ///
+    /// list.add_string("Hello", "World!");
+    ///
+    /// assert_eq!(list.get_string("Hello").unwrap(), "World!");
+    /// ```
+    pub fn get_string(&self, name: &str) -> Option<String> {
+        match self.list {
+            Some(list) => {
+                unsafe {
+                    let char_arr = name.as_bytes().as_ptr();
+                    if nvlist_exists_string(list, char_arr) {
+                        let ret = nvlist_get_string(list, name.as_bytes().as_ptr());
+                        if ret.is_null() {
+                            None
+                        } else {
+                            let len = strlen(ret);
+                            Some(String::from_raw_parts(ret as *mut u8, len, len))
+                        }
+                    } else {
+                        None
+                    }
+                }
+            },
+            _ => None
+        }
+    }
+
+    /// Get the first matching `NvList` value paired with
+    /// the given name and clone it
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::All).unwrap();
+    ///
+    /// list.add_bool("other list", true);
+    ///
+    /// let mut other_list = NvList::new(NvFlag::None).unwrap();
+    /// other_list.add_number("the answer", 42);
+    ///
+    /// list.add_nvlist("other list", &other_list);
+    ///
+    /// // Note: Since we use `get_nvlist` we will get the
+    /// // NvList not the boolean value
+    /// let other_nvlist = list.get_nvlist("other list").unwrap();
+    ///
+    /// assert_eq!(other_nvlist.get_number("the answer").unwrap(), 42);
+    /// ```
+    pub fn get_nvlist(&self, name: &str) -> Option<NvList> {
+        match self.list {
+            Some(list) => {
+                unsafe {
+                    let char_arr = name.as_bytes().as_ptr();
+                    if nvlist_exists_nvlist(list, char_arr) {
+                        let res = nvlist_get_nvlist(list, name.as_bytes().as_ptr());
+                        Some(NvList {
+                            list: Some(nvlist_clone(res))
+                        })
+                    } else {
+                        None
+                    }
+                }
+            },
+            _ => None
+        }
+    }
+
     /// Write `NvList` to a file descriptor
     ///
     /// ```
@@ -383,4 +546,15 @@ extern {
                                value: *const *const u8, size: usize) -> ();
     fn nvlist_add_nvlist_array(list: *mut nvlist, name: *const u8,
                                value: *const *const nvlist, size: usize) -> ();
+    fn nvlist_exists(list: *mut nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_type(list: *const nvlist, name: *const u8, ty: i32) -> bool;
+    fn nvlist_exists_bool(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_number(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_string(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_nvlist(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_get_bool(list: *mut nvlist, name: *const u8) -> bool;
+    fn nvlist_get_number(list: *mut nvlist, name: *const u8) -> u64;
+    fn nvlist_get_string(list: *mut nvlist, name: *const u8) -> *const u8;
+    fn nvlist_get_nvlist(list: *mut nvlist, name: *const u8) -> *const nvlist;
+    fn strlen(target: *const u8) -> usize;
 }
