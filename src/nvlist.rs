@@ -4,6 +4,7 @@
 
 
 use std::str;
+use std::slice;
 use std::os::unix::io::AsRawFd;
 use common::{NvErr, NvResult, NvType};
 use nvops::NvListOps;
@@ -48,6 +49,7 @@ impl PartialEq for NvFlag {
 struct nvlist;
 
 /// A list of name/value pairs
+#[derive(Debug)]
 pub struct NvList {
     list: Option<*mut nvlist>,
 }
@@ -152,6 +154,8 @@ impl NvList {
     /// list.add("not the answer", not_the_answer);
     /// let copy = list.clone();
     /// list.add("how very meta of you", copy);
+    ///
+    /// assert_eq!(list.get_number("the answer").unwrap(), 42);
     /// ```
     pub fn add<T: NvListOps>(&mut self, name: &str, value: T) -> () {
         value.nv_add(self, name);
@@ -269,6 +273,7 @@ impl NvList {
     /// let slice = [42, 100];
     ///
     /// list.add_number_slice("the answer", &slice);
+    ///
     /// ```
     pub fn add_number_slice(&mut self, name: &str, value: &[u64]) -> () {
         if let Some(list) = self.list {
@@ -276,21 +281,6 @@ impl NvList {
                 nvlist_add_number_array(list,
                                         name.as_bytes().as_ptr(),
                                         value.as_ptr(),
-                                        value.len());
-            }
-        }
-    }
-
-    /// Add a slice of strings
-    pub fn add_string_slice(&mut self, name: &str, value: &[&str]) -> () {
-        if let Some(list) = self.list {
-            unsafe {
-                let tmp: Vec<*const u8> = value.iter()
-                    .map(|item| item.as_bytes().as_ptr())
-                    .collect();
-                nvlist_add_string_array(list,
-                                        name.as_bytes().as_ptr(),
-                                        tmp.as_slice().as_ptr(),
                                         value.len());
             }
         }
@@ -307,6 +297,10 @@ impl NvList {
     ///              NvList::new(NvFlag::None).unwrap()];
     ///
     /// list.add_nvlist_slice("nvlists", &slice);
+    ///
+    /// let mut nvlists = list.get_nvlist_vec("nvlists").unwrap();
+    ///
+    /// assert_eq!(NvFlag::None, nvlists.pop().unwrap().flags());
     /// ```
     pub fn add_nvlist_slice(&mut self, name: &str, value: &[NvList]) -> () {
         if let Some(list) = self.list {
@@ -460,6 +454,100 @@ impl NvList {
         }
     }
 
+    /// Get a `&[bool]` from the `NvList`
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::None).unwrap();
+    ///
+    /// list.add_bool_slice("true/false", &[true, false, true]);
+    ///
+    /// assert_eq!(list.get_bool_slice("true/false").unwrap(), &[true, false, true]);
+    /// ```
+    pub fn get_bool_slice<'a>(&'a self, name: &str) -> Option<&'a [bool]> {
+        match self.list {
+            Some(list) => unsafe {
+                let name_ptr = name.as_bytes().as_ptr();
+                if nvlist_exists_bool_array(list, name_ptr) {
+                    let mut len: usize = 0;
+                    let arr = nvlist_get_bool_array(list, name_ptr, &mut len as *mut usize);
+                    Some(slice::from_raw_parts(arr as *const bool, len))
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    /// Get a `&[u64]` slice from the `NvList`
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::None).unwrap();
+    ///
+    /// list.add_number_slice("unoriginal", &[1, 2, 3, 4, 5]);
+    ///
+    /// assert_eq!(list.get_number_slice("unoriginal").unwrap(), &[1, 2, 3, 4, 5]);
+    /// ```
+    pub fn get_number_slice<'a>(&'a self, name: &str) -> Option<&'a [u64]> {
+        match self.list {
+            Some(list) => unsafe {
+                let name_ptr = name.as_bytes().as_ptr();
+                if nvlist_exists_number_array(list, name_ptr) {
+                    let mut len: usize = 0;
+                    let arr = nvlist_get_number_array(list, name_ptr, &mut len as *mut usize);
+                    Some(slice::from_raw_parts(arr as *const u64, len))
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    /// Get a `Vec<NvList>` from the `NvList`
+    ///
+    /// ```
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// // Note: we're allowing duplicate values per name
+    /// let mut list = NvList::new(NvFlag::None).unwrap();
+    ///
+    /// list.add_nvlist_slice("unoriginal", &[NvList::default(),
+    ///                                       NvList::new(NvFlag::None).unwrap()]);
+    ///
+    /// let vec = list.get_nvlist_vec("unoriginal").unwrap();
+    ///
+    /// // Note: default NvLists have a list of `None` and will
+    /// // not be inserted into the used NvList
+    ///
+    /// assert_eq!(vec.len(), 1);
+    /// assert_eq!(vec[0].flags(), NvFlag::None);
+    /// ```
+    pub fn get_nvlist_vec(&self, name: &str) -> Option<Vec<NvList>> {
+        match self.list {
+            Some(list) => unsafe {
+                let name_ptr = name.as_bytes().as_ptr();
+                if nvlist_exists_nvlist_array(list, name_ptr) {
+                    let mut len: usize = 0;
+                    let arr = nvlist_get_nvlist_array(list, name_ptr, &mut len as *mut usize);
+                    let slice = slice::from_raw_parts(arr as *const *const nvlist, len);
+                    Some(slice.iter()
+                        .map(|item| NvList { list: Some(nvlist_clone(*item)) })
+                        .collect())
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
     /// Write `NvList` to a file descriptor
     ///
     /// ```
@@ -537,11 +625,11 @@ extern "C" {
                                value: *const u64,
                                size: usize)
                                -> ();
-    fn nvlist_add_string_array(list: *mut nvlist,
-                               name: *const u8,
-                               value: *const *const u8,
-                               size: usize)
-                               -> ();
+    // fn nvlist_add_string_array(list: *mut nvlist,
+    //                           name: *const u8,
+    //                           value: *const *const u8,
+    //                           size: usize)
+    //                           -> ();
     fn nvlist_add_nvlist_array(list: *mut nvlist,
                                name: *const u8,
                                value: *const *const nvlist,
@@ -553,9 +641,25 @@ extern "C" {
     fn nvlist_exists_number(list: *const nvlist, name: *const u8) -> bool;
     fn nvlist_exists_string(list: *const nvlist, name: *const u8) -> bool;
     fn nvlist_exists_nvlist(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_bool_array(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_number_array(list: *const nvlist, name: *const u8) -> bool;
+    // fn nvlist_exists_string_array(list: *const nvlist, name: *const u8) -> bool;
+    fn nvlist_exists_nvlist_array(list: *const nvlist, name: *const u8) -> bool;
     fn nvlist_get_bool(list: *mut nvlist, name: *const u8) -> bool;
     fn nvlist_get_number(list: *mut nvlist, name: *const u8) -> u64;
     fn nvlist_get_string(list: *mut nvlist, name: *const u8) -> *const u8;
     fn nvlist_get_nvlist(list: *mut nvlist, name: *const u8) -> *const nvlist;
+    fn nvlist_get_bool_array(list: *const nvlist, name: *const u8, len: *const usize) -> *mut bool;
+    fn nvlist_get_number_array(list: *const nvlist,
+                               name: *const u8,
+                               len: *const usize)
+                               -> *mut u64;
+    // fn nvlist_get_string_array(list: *const nvlist,
+    //                            name: *const u8,
+    //                            len: *const usize) -> *const *const u8;
+    fn nvlist_get_nvlist_array(list: *const nvlist,
+                               name: *const u8,
+                               len: *const usize)
+                               -> *const *const nvlist;
     fn strlen(target: *const u8) -> usize;
 }
