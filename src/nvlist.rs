@@ -312,9 +312,7 @@ impl NvList {
             let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
                 let tmp: Vec<*const i8> = value.iter()
-                    .map(|item| {
-                        CString::new(*item).expect("Could not decode string").as_ptr()
-                    })
+                    .map(|item| CString::new(*item).expect("Could not decode string").as_ptr())
                     .collect();
                 nvlist_add_string_array(list,
                                         c_name.as_ptr(),
@@ -560,13 +558,11 @@ impl NvList {
             Some(list) => unsafe {
                 if nvlist_exists_string_array(list, c_name.as_ptr()) {
                     let mut len: usize = 0;
-                    let arr = nvlist_get_string_array(list, c_name.as_ptr(),
-                                                      &mut len as *mut usize);
+                    let arr =
+                        nvlist_get_string_array(list, c_name.as_ptr(), &mut len as *mut usize);
                     let slice = slice::from_raw_parts(arr as *const *const i8, len);
                     Some(slice.iter()
-                        .map(|item| {
-                            CStr::from_ptr(*item).to_string_lossy().into_owned()
-                        })
+                        .map(|item| CStr::from_ptr(*item).to_string_lossy().into_owned())
                         .collect())
                 } else {
                     None
@@ -601,8 +597,8 @@ impl NvList {
             Some(list) => unsafe {
                 if nvlist_exists_nvlist_array(list, c_name.as_ptr()) {
                     let mut len: usize = 0;
-                    let arr = nvlist_get_nvlist_array(list, c_name.as_ptr(),
-                                                      &mut len as *mut usize);
+                    let arr =
+                        nvlist_get_nvlist_array(list, c_name.as_ptr(), &mut len as *mut usize);
                     let slice = slice::from_raw_parts(arr as *const *const nvlist, len);
                     Some(slice.iter()
                         .map(|item| NvList { list: Some(nvlist_clone(*item)) })
@@ -718,7 +714,7 @@ extern "C" {
                                name: *const i8,
                                value: *const *const i8,
                                size: usize)
-                              -> ();
+                               -> ();
     fn nvlist_add_nvlist_array(list: *mut nvlist,
                                name: *const i8,
                                value: *const *const nvlist,
@@ -745,7 +741,8 @@ extern "C" {
                                -> *mut u64;
     fn nvlist_get_string_array(list: *const nvlist,
                                name: *const i8,
-                               len: *const usize) -> *const *const i8;
+                               len: *const usize)
+                               -> *const *const i8;
     fn nvlist_get_nvlist_array(list: *const nvlist,
                                name: *const i8,
                                len: *const usize)
