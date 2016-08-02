@@ -3,11 +3,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-use std::str;
-use std::slice;
-use std::os::unix::io::AsRawFd;
 use common::{NvErr, NvResult, NvType};
 use nvops::NvListOps;
+use std::ffi::{CStr, CString};
+use std::{slice, str};
+use std::os::unix::io::AsRawFd;
 
 /// Enumeration of options available to be passed to
 /// the creation of an `nvlist`
@@ -168,8 +168,9 @@ impl NvList {
     /// ```
     pub fn add_null(&mut self, name: &str) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
-                nvlist_add_null(list, name.as_bytes().as_ptr());
+                nvlist_add_null(list, c_name.as_ptr());
             }
         }
     }
@@ -177,8 +178,9 @@ impl NvList {
     /// Add a `bool` to the list
     pub fn add_bool(&mut self, name: &str, value: bool) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
-                nvlist_add_bool(list, name.as_bytes().as_ptr(), value);
+                nvlist_add_bool(list, c_name.as_ptr(), value);
             }
         }
     }
@@ -194,8 +196,9 @@ impl NvList {
     /// ```
     pub fn add_number(&mut self, name: &str, value: u64) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
-                nvlist_add_number(list, name.as_bytes().as_ptr(), value);
+                nvlist_add_number(list, c_name.as_ptr(), value);
             }
         }
     }
@@ -203,7 +206,9 @@ impl NvList {
     /// Add string to the list
     pub fn add_string(&mut self, name: &str, value: &str) -> () {
         if let Some(list) = self.list {
-            unsafe { nvlist_add_string(list, name.as_bytes().as_ptr(), value.as_bytes().as_ptr()) }
+            let c_name = CString::new(name).expect("Could not decode string");
+            let c_value = CString::new(value).expect("Could not decode string");
+            unsafe { nvlist_add_string(list, c_name.as_ptr(), c_value.as_ptr()) }
         }
     }
 
@@ -221,16 +226,15 @@ impl NvList {
     /// assert_eq!(other_list.get_bool("something"), None);
     /// ```
     pub fn add_nvlist(&mut self, name: &str, value: &NvList) -> () {
+        let c_name = CString::new(name).expect("Could not decode string");
         match (self.list, value.list) {
             // Both are valid
             (Some(this), Some(other)) if !other.is_null() => unsafe {
-                nvlist_add_nvlist(this, name.as_bytes().as_ptr(), other)
+                nvlist_add_nvlist(this, c_name.as_ptr(), other)
             },
             // This is valid, but the other is not
             (Some(this), _) => unsafe {
-                nvlist_add_nvlist(this,
-                                  name.as_bytes().as_ptr(),
-                                  nvlist_create(self.flags() as i32))
+                nvlist_add_nvlist(this, c_name.as_ptr(), nvlist_create(self.flags() as i32))
             },
             // Something bad happened... nop
             _ => {}
@@ -239,8 +243,9 @@ impl NvList {
 
     /// Add binary data to the list
     pub unsafe fn add_binary(&mut self, name: &str, value: *mut i8, size: u32) -> () {
+        let c_name = CString::new(name).expect("Could not decode string");
         if let Some(list) = self.list {
-            nvlist_add_binary(list, name.as_bytes().as_ptr(), value, size);
+            nvlist_add_binary(list, c_name.as_ptr(), value, size);
         }
     }
 
@@ -257,8 +262,9 @@ impl NvList {
     /// ```
     pub fn add_bool_slice(&mut self, name: &str, value: &[bool]) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
-                nvlist_add_bool_array(list, name.as_bytes().as_ptr(), value.as_ptr(), value.len());
+                nvlist_add_bool_array(list, c_name.as_ptr(), value.as_ptr(), value.len());
             }
         }
     }
@@ -277,10 +283,42 @@ impl NvList {
     /// ```
     pub fn add_number_slice(&mut self, name: &str, value: &[u64]) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
-                nvlist_add_number_array(list,
-                                        name.as_bytes().as_ptr(),
-                                        value.as_ptr(),
+                nvlist_add_number_array(list, c_name.as_ptr(), value.as_ptr(), value.len());
+            }
+        }
+    }
+
+    /// Add a slice of strings
+    ///
+    /// **NB**: This is currently broken
+    ///
+    /// ```should_panic
+    /// use nv::{NvList, NvFlag};
+    ///
+    /// let mut list = NvList::new(NvFlag::None).unwrap();
+    ///
+    /// let orig_vec = vec!["Hello", "World!"];
+    ///
+    /// list.add_string_slice("unoriginal", &orig_vec);
+    ///
+    /// let vec = list.get_string_vec("unoriginal").unwrap();
+    ///
+    /// assert_eq!(*vec, ["Hello", "World!"]);
+    /// ```
+    pub fn add_string_slice(&mut self, name: &str, value: &[&str]) -> () {
+        if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
+            unsafe {
+                let tmp: Vec<*const i8> = value.iter()
+                    .map(|item| {
+                        CString::new(*item).expect("Could not decode string").as_ptr()
+                    })
+                    .collect();
+                nvlist_add_string_array(list,
+                                        c_name.as_ptr(),
+                                        tmp.as_slice().as_ptr(),
                                         value.len());
             }
         }
@@ -304,6 +342,7 @@ impl NvList {
     /// ```
     pub fn add_nvlist_slice(&mut self, name: &str, value: &[NvList]) -> () {
         if let Some(list) = self.list {
+            let c_name = CString::new(name).expect("Could not decode string");
             unsafe {
                 let tmp: Vec<*const nvlist> = value.iter()
                     .filter(|item| match item.list {
@@ -312,10 +351,7 @@ impl NvList {
                     })
                     .map(|item| item.list.unwrap() as *const nvlist)
                     .collect();
-                nvlist_add_nvlist_array(list,
-                                        name.as_bytes().as_ptr(),
-                                        tmp.as_slice().as_ptr(),
-                                        tmp.len());
+                nvlist_add_nvlist_array(list, c_name.as_ptr(), tmp.as_slice().as_ptr(), tmp.len());
             }
         }
     }
@@ -324,8 +360,9 @@ impl NvList {
     /// exists in the `NvList` and `false`
     /// otherwise
     pub fn exists(&self, name: &str) -> bool {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
-            Some(list) => unsafe { nvlist_exists(list, name.as_bytes().as_ptr()) },
+            Some(list) => unsafe { nvlist_exists(list, c_name.as_ptr()) },
             _ => false,
         }
     }
@@ -334,8 +371,9 @@ impl NvList {
     /// of the specified type exists in the
     /// `NvList` and `false` otherwise
     pub fn exists_type(&self, name: &str, ty: NvType) -> bool {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
-            Some(list) => unsafe { nvlist_exists_type(list, name.as_bytes().as_ptr(), ty as i32) },
+            Some(list) => unsafe { nvlist_exists_type(list, c_name.as_ptr(), ty as i32) },
             None => false,
         }
     }
@@ -355,11 +393,11 @@ impl NvList {
     /// assert!(list.get_bool("is rust awesome?").unwrap(), true);
     /// ```
     pub fn get_bool(&self, name: &str) -> Option<bool> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let char_arr = name.as_bytes().as_ptr();
-                if nvlist_exists_bool(list, char_arr) {
-                    Some(nvlist_get_bool(list, name.as_bytes().as_ptr()))
+                if nvlist_exists_bool(list, c_name.as_ptr()) {
+                    Some(nvlist_get_bool(list, c_name.as_ptr()))
                 } else {
                     None
                 }
@@ -371,11 +409,12 @@ impl NvList {
     /// Get the first matching `u64` value paired with
     /// the given name
     pub fn get_number(&self, name: &str) -> Option<u64> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let char_arr = name.as_bytes().as_ptr();
+                let char_arr = c_name.as_ptr();
                 if nvlist_exists_number(list, char_arr) {
-                    Some(nvlist_get_number(list, name.as_bytes().as_ptr()))
+                    Some(nvlist_get_number(list, c_name.as_ptr()))
                 } else {
                     None
                 }
@@ -398,11 +437,11 @@ impl NvList {
     /// assert_eq!(list.get_string("Hello").unwrap(), "World!");
     /// ```
     pub fn get_string(&self, name: &str) -> Option<String> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let char_arr = name.as_bytes().as_ptr();
-                if nvlist_exists_string(list, char_arr) {
-                    let ret = nvlist_get_string(list, name.as_bytes().as_ptr());
+                if nvlist_exists_string(list, c_name.as_ptr()) {
+                    let ret = nvlist_get_string(list, c_name.as_ptr());
                     if ret.is_null() {
                         None
                     } else {
@@ -440,11 +479,11 @@ impl NvList {
     /// assert_eq!(other_nvlist.get_number("the answer").unwrap(), 42);
     /// ```
     pub fn get_nvlist(&self, name: &str) -> Option<NvList> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let char_arr = name.as_bytes().as_ptr();
-                if nvlist_exists_nvlist(list, char_arr) {
-                    let res = nvlist_get_nvlist(list, name.as_bytes().as_ptr());
+                if nvlist_exists_nvlist(list, c_name.as_ptr()) {
+                    let res = nvlist_get_nvlist(list, c_name.as_ptr());
                     Some(NvList { list: Some(nvlist_clone(res)) })
                 } else {
                     None
@@ -467,12 +506,12 @@ impl NvList {
     /// assert_eq!(list.get_bool_slice("true/false").unwrap(), &[true, false, true]);
     /// ```
     pub fn get_bool_slice<'a>(&'a self, name: &str) -> Option<&'a [bool]> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let name_ptr = name.as_bytes().as_ptr();
-                if nvlist_exists_bool_array(list, name_ptr) {
+                if nvlist_exists_bool_array(list, c_name.as_ptr()) {
                     let mut len: usize = 0;
-                    let arr = nvlist_get_bool_array(list, name_ptr, &mut len as *mut usize);
+                    let arr = nvlist_get_bool_array(list, c_name.as_ptr(), &mut len as *mut usize);
                     Some(slice::from_raw_parts(arr as *const bool, len))
                 } else {
                     None
@@ -495,12 +534,13 @@ impl NvList {
     /// assert_eq!(list.get_number_slice("unoriginal").unwrap(), &[1, 2, 3, 4, 5]);
     /// ```
     pub fn get_number_slice<'a>(&'a self, name: &str) -> Option<&'a [u64]> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let name_ptr = name.as_bytes().as_ptr();
-                if nvlist_exists_number_array(list, name_ptr) {
+                if nvlist_exists_number_array(list, c_name.as_ptr()) {
                     let mut len: usize = 0;
-                    let arr = nvlist_get_number_array(list, name_ptr, &mut len as *mut usize);
+                    let arr =
+                        nvlist_get_number_array(list, c_name.as_ptr(), &mut len as *mut usize);
                     Some(slice::from_raw_parts(arr as *const u64, len))
                 } else {
                     None
@@ -510,7 +550,33 @@ impl NvList {
         }
     }
 
-    /// Get a `Vec<NvList>` from the `NvList`
+    /// Get a `Vec<String>` of the first string slice added to the `NvList`
+    /// for the given name
+    ///
+    /// **NB**: This is currently broken
+    pub fn get_string_vec(&self, name: &str) -> Option<Vec<String>> {
+        let c_name = CString::new(name).expect("Could not decode string");
+        match self.list {
+            Some(list) => unsafe {
+                if nvlist_exists_string_array(list, c_name.as_ptr()) {
+                    let mut len: usize = 0;
+                    let arr = nvlist_get_string_array(list, c_name.as_ptr(),
+                                                      &mut len as *mut usize);
+                    let slice = slice::from_raw_parts(arr as *const *const i8, len);
+                    Some(slice.iter()
+                        .map(|item| {
+                            CStr::from_ptr(*item).to_string_lossy().into_owned()
+                        })
+                        .collect())
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    /// Write `NvList` to a file descriptor
     ///
     /// ```
     /// use nv::{NvList, NvFlag};
@@ -530,12 +596,13 @@ impl NvList {
     /// assert_eq!(vec[0].flags(), NvFlag::None);
     /// ```
     pub fn get_nvlist_vec(&self, name: &str) -> Option<Vec<NvList>> {
+        let c_name = CString::new(name).expect("Could not decode string");
         match self.list {
             Some(list) => unsafe {
-                let name_ptr = name.as_bytes().as_ptr();
-                if nvlist_exists_nvlist_array(list, name_ptr) {
+                if nvlist_exists_nvlist_array(list, c_name.as_ptr()) {
                     let mut len: usize = 0;
-                    let arr = nvlist_get_nvlist_array(list, name_ptr, &mut len as *mut usize);
+                    let arr = nvlist_get_nvlist_array(list, c_name.as_ptr(),
+                                                      &mut len as *mut usize);
                     let slice = slice::from_raw_parts(arr as *const *const nvlist, len);
                     Some(slice.iter()
                         .map(|item| NvList { list: Some(nvlist_clone(*item)) })
@@ -571,6 +638,28 @@ impl NvList {
         match self.list {
             Some(list) => unsafe { nvlist_size(list) },
             None => 0,
+        }
+    }
+
+    /// Remove the element of the given name from the
+    /// `NvList`
+    pub fn free(&mut self, name: &str) -> () {
+        let c_name = CString::new(name).expect("Could not decode string");
+        if let Some(list) = self.list {
+            unsafe {
+                nvlist_free(list, c_name.as_ptr());
+            }
+        }
+    }
+
+    /// Remove the element of the given name and type
+    /// from the `NvList`
+    pub fn free_type(&mut self, name: &str, ty: NvType) -> () {
+        let c_name = CString::new(name).expect("Could not decode string");
+        if let Some(list) = self.list {
+            unsafe {
+                nvlist_free_type(list, c_name.as_ptr(), ty as i32);
+            }
         }
     }
 }
@@ -609,57 +698,59 @@ extern "C" {
     fn nvlist_dump(list: *const nvlist, fd: i32) -> ();
     fn nvlist_size(list: *const nvlist) -> i32;
     // add value
-    fn nvlist_add_null(list: *mut nvlist, name: *const u8) -> ();
-    fn nvlist_add_bool(list: *mut nvlist, name: *const u8, value: bool) -> ();
-    fn nvlist_add_number(list: *mut nvlist, name: *const u8, value: u64) -> ();
-    fn nvlist_add_string(list: *mut nvlist, name: *const u8, value: *const u8) -> ();
-    fn nvlist_add_nvlist(list: *mut nvlist, name: *const u8, value: *const nvlist) -> ();
-    fn nvlist_add_binary(list: *mut nvlist, name: *const u8, value: *mut i8, size: u32) -> ();
+    fn nvlist_add_null(list: *mut nvlist, name: *const i8) -> ();
+    fn nvlist_add_bool(list: *mut nvlist, name: *const i8, value: bool) -> ();
+    fn nvlist_add_number(list: *mut nvlist, name: *const i8, value: u64) -> ();
+    fn nvlist_add_string(list: *mut nvlist, name: *const i8, value: *const i8) -> ();
+    fn nvlist_add_nvlist(list: *mut nvlist, name: *const i8, value: *const nvlist) -> ();
+    fn nvlist_add_binary(list: *mut nvlist, name: *const i8, value: *mut i8, size: u32) -> ();
     fn nvlist_add_bool_array(list: *mut nvlist,
-                             name: *const u8,
+                             name: *const i8,
                              value: *const bool,
                              size: usize)
                              -> ();
     fn nvlist_add_number_array(list: *mut nvlist,
-                               name: *const u8,
+                               name: *const i8,
                                value: *const u64,
                                size: usize)
                                -> ();
-    // fn nvlist_add_string_array(list: *mut nvlist,
-    //                           name: *const u8,
-    //                           value: *const *const u8,
-    //                           size: usize)
-    //                           -> ();
+    fn nvlist_add_string_array(list: *mut nvlist,
+                               name: *const i8,
+                               value: *const *const i8,
+                               size: usize)
+                              -> ();
     fn nvlist_add_nvlist_array(list: *mut nvlist,
-                               name: *const u8,
+                               name: *const i8,
                                value: *const *const nvlist,
                                size: usize)
                                -> ();
-    fn nvlist_exists(list: *mut nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_type(list: *const nvlist, name: *const u8, ty: i32) -> bool;
-    fn nvlist_exists_bool(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_number(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_string(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_nvlist(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_bool_array(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_number_array(list: *const nvlist, name: *const u8) -> bool;
-    // fn nvlist_exists_string_array(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_exists_nvlist_array(list: *const nvlist, name: *const u8) -> bool;
-    fn nvlist_get_bool(list: *mut nvlist, name: *const u8) -> bool;
-    fn nvlist_get_number(list: *mut nvlist, name: *const u8) -> u64;
-    fn nvlist_get_string(list: *mut nvlist, name: *const u8) -> *const u8;
-    fn nvlist_get_nvlist(list: *mut nvlist, name: *const u8) -> *const nvlist;
-    fn nvlist_get_bool_array(list: *const nvlist, name: *const u8, len: *const usize) -> *mut bool;
+    fn nvlist_exists(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_type(list: *const nvlist, name: *const i8, ty: i32) -> bool;
+    fn nvlist_exists_bool(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_number(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_string(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_nvlist(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_bool_array(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_number_array(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_string_array(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_exists_nvlist_array(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_get_bool(list: *const nvlist, name: *const i8) -> bool;
+    fn nvlist_get_number(list: *const nvlist, name: *const i8) -> u64;
+    fn nvlist_get_string(list: *const nvlist, name: *const i8) -> *const i8;
+    fn nvlist_get_nvlist(list: *const nvlist, name: *const i8) -> *const nvlist;
+    fn nvlist_get_bool_array(list: *const nvlist, name: *const i8, len: *const usize) -> *mut bool;
     fn nvlist_get_number_array(list: *const nvlist,
-                               name: *const u8,
+                               name: *const i8,
                                len: *const usize)
                                -> *mut u64;
-    // fn nvlist_get_string_array(list: *const nvlist,
-    //                            name: *const u8,
-    //                            len: *const usize) -> *const *const u8;
+    fn nvlist_get_string_array(list: *const nvlist,
+                               name: *const i8,
+                               len: *const usize) -> *const *const i8;
     fn nvlist_get_nvlist_array(list: *const nvlist,
-                               name: *const u8,
+                               name: *const i8,
                                len: *const usize)
                                -> *const *const nvlist;
-    fn strlen(target: *const u8) -> usize;
+    fn nvlist_free(list: *mut nvlist, name: *const i8) -> ();
+    fn nvlist_free_type(list: *mut nvlist, name: *const i8, ty: i32) -> ();
+    fn strlen(target: *const i8) -> usize;
 }
